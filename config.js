@@ -1,6 +1,6 @@
 // Add your Supabase Project URL and publishable (anon) key to enable accounts.
 // NEVER place your service_role/secret key in this file.
 window.NOVELLA_CONFIG = {
-  supabaseUrl: '',
+  supabaseUrl: 'https://szsdvhwziiyezaciahcv.supabase.co',
   supabaseAnonKey: 'sb_publishable_DrNlggOLwp0qbzuojCTcNA_1mQlMaFs'
 };
