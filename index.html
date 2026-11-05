@@ -577,6 +577,31 @@ function readerModal(b){const keys=Object.keys(b.formats||{});const k=keys.find(
 }
 function openAuth(mode='signin'){authMode=mode;$('#modal-overlay').classList.remove('hidden');authPaint()}
 function authPaint(){const root=$('#modal-body');const account=authMode==='account';root.innerHTML=`<span class="intro-label">YOUR NEXT CHAPTER STARTS HERE</span><h2 id="modal-heading">${account?'Your account':authMode==='signup'?'Join the book club':authMode==='forgot'?'Reset your password':authMode==='new-password'?'Set a new password':'Welcome back'}</h2><p>${account?'Make your reading space yours.':authMode==='signup'?'A personalized reading life begins here.':authMode==='forgot'?'We will email you a password reset link.':authMode==='new-password'?'Choose a new password to continue.':'Sign in to sync your shelf and your stories.'}</p>${!db?'<div class="alert">Accounts are not connected yet. Add your Supabase publishable key in config.js. Your guest library still works.</div>':''}${account?`<p><strong>${esc(me?.email||'')}</strong></p><div class="field"><label for="profile-name">Display name</label><input id="profile-name" maxlength="50" value="${esc(me?.user_metadata?.name||'')}"></div><button class="primary-btn" id="save-profile">Save name</button> <button class="secondary-btn" id="signout">Sign out</button><button class="link-btn" id="open-password">Change password</button><p id="auth-msg" class="form-msg"></p>`:authMode==='new-password'?`<form id="auth-form"><div class="field"><label>New password</label><input type="password" name="password" minlength="8" required autocomplete="new-password"></div><button class="primary-btn">Update password</button><p id="auth-msg" class="form-msg"></p></form>`:authMode==='forgot'?`<form id="auth-form"><div class="field"><label>Email address</label><input type="email" name="email" required autocomplete="email"></div><button class="primary-btn">Send reset email</button><button type="button" class="link-btn" data-auth="signin">Back to sign in</button><p id="auth-msg" class="form-msg"></p></form>`:`<div class="auth-tabs"><button class="${authMode==='signin'?'active':''}" data-auth="signin">Sign in</button><button class="${authMode==='signup'?'active':''}" data-auth="signup">Register</button></div><form id="auth-form">${authMode==='signup'?'<div class="field"><label>Display name</label><input name="name" maxlength="50" autocomplete="name" required placeholder="What should we call you?"></div>':''}<div class="field"><label>Email address</label><input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></div><div class="field"><label>Password</label><input name="password" type="password" minlength="8" autocomplete="${authMode==='signup'?'new-password':'current-password'}" required placeholder="At least 8 characters"></div><button class="primary-btn" style="width:100%">${authMode==='signup'?'Create account':'Sign in'} →</button>${authMode==='signin'?'<button type="button" class="link-btn" data-auth="forgot">Forgot password?</button>':''}<p id="auth-msg" class="form-msg"></p></form>`}`;if($('#auth-form'))$('#auth-form').onsubmit=authSubmit;
+if (db && ['signin', 'signup'].includes(authMode)) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'secondary-btn';
+  btn.textContent = 'Continue with Google';
+  btn.style.cssText = 'width:100%;margin:14px 0';
+
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try {
+      const { error } = await db.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: location.origin + location.pathname
+        }
+      });
+      if (error) throw error;
+    } catch (e) {
+      btn.disabled = false;
+      alert(e.message);
+    }
+  };
+
+  $('#auth-form')?.before(btn);
+}
  if($('#signout'))$('#signout').onclick=async()=>{await db.auth.signOut();closeAuth();notify('Signed out')};if($('#save-profile'))$('#save-profile').onclick=async()=>{const {error}=await db.auth.updateUser({data:{name:$('#profile-name').value.trim().slice(0,50)}});$('#auth-msg').textContent=error?.message||'Name updated';};if($('#open-password'))$('#open-password').onclick=()=>openAuth('new-password');}
 function closeAuth(){$('#modal-overlay').classList.add('hidden');const btn=$('#auth-button');if(btn)btn.focus()}
 async function authSubmit(e){e.preventDefault();const msg=$('#auth-msg');if(!db){msg.textContent='Connect Supabase first in config.js.';return}const btn=e.currentTarget.querySelector('button[type=submit],button.primary-btn');if(!btn)return;btn.disabled=true;msg.textContent='Please wait…';const form=new FormData(e.currentTarget);const email=String(form.get('email')||'').trim(),password=String(form.get('password')||'');try{
