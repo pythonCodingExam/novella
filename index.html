@@ -651,6 +651,124 @@ window.addEventListener('popstate',()=>{const u=new URL(location.href);const b=u
 const start=new URL(location.href);const route=start.searchParams.get('view');screen=['explore','genres','library','history','info'].includes(route)?route:'home';
 document.body.classList.toggle('dark-mode',userTheme==='dark');$('#theme-btn').textContent=userTheme==='dark'?'☀':'☾';
 paint();initCatalog();initAuth();const book=start.searchParams.get('book');if(book&&/^(gutenberg|openlibrary|google):[a-zA-Z0-9_-]+$/.test(book))setTimeout(()=>showBook(book,false),250);
+/* Novella reader reliability patch. Add before the final </script> in index.html. */
+readerModal = function (book) {
+  document.getElementById('nv-reader')?.remove();
+  const official = `https://www.gutenberg.org/ebooks/${encodeURIComponent(book.id)}`;
+  const formats = book.formats || {};
+  const textKey = Object.keys(formats).find(k => k.startsWith('text/plain') && !k.includes('zip'));
+  const source = textKey ? url(formats[textKey]) : null;
+  const oldFocus = document.activeElement;
+  const oldOverflow = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
+
+  if (!document.getElementById('nv-reader-css')) {
+    const css = document.createElement('style');
+    css.id = 'nv-reader-css';
+    css.textContent = `
+      #nv-reader {position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;background:#f6f0e5;color:#292d32;font:14px Arial,sans-serif}
+      #nv-reader .nv-bar {display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 18px;background:#fffdf9;border-bottom:1px solid #d6ccc0;color:#293340}
+      #nv-reader .nv-title {flex:1;min-width:130px;font:600 16px Georgia,serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      #nv-reader button,#nv-reader select,#nv-reader .nv-link {border:1px solid #bcb3a7;border-radius:6px;padding:9px 11px;background:#fffdf9;color:#293340;font:600 12px Arial,sans-serif;cursor:pointer;text-decoration:none}
+      #nv-reader button:focus-visible,#nv-reader select:focus-visible,#nv-reader .nv-link:focus-visible {outline:3px solid #8b88c6;outline-offset:2px}
+      #nv-reader button:disabled {opacity:.45;cursor:not-allowed}
+      #nv-reader .nv-progress {height:3px;background:#d9d1c6}
+      #nv-reader .nv-progress span {display:block;height:100%;width:0;background:#7466a6}
+      #nv-reader .nv-text {flex:1;overflow:auto;padding:clamp(25px,5vw,65px) max(22px,calc((100% - 760px)/2));font:18px/1.85 Georgia,serif;white-space:pre-wrap;overflow-wrap:break-word;overscroll-behavior:contain}
+      #nv-reader .nv-text.sepia {background:#f6f0e5;color:#352c26}
+      #nv-reader .nv-text.light {background:#fff;color:#252a30}
+      #nv-reader .nv-text.dark {background:#22262c;color:#e9ebed}
+      #nv-reader .nv-message {max-width:550px;margin:14vh auto 0;padding:25px;text-align:center;font:15px/1.65 Arial,sans-serif;white-space:normal}
+      #nv-reader .nv-message h2 {font:normal 29px Georgia,serif;margin:0 0 8px}
+      #nv-reader .nv-message p {color:inherit;opacity:.85}
+      #nv-reader .nv-file {position:absolute;left:-9999px;width:1px;height:1px}
+      #nv-reader .nv-actions {display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:17px}
+      @media(max-width:650px) {#nv-reader .nv-bar {padding:8px;gap:5px} #nv-reader .nv-title {order:-1;flex-basis:100%;max-width:100%} #nv-reader .nv-text {padding:22px 17px}}
+    `;
+    document.head.append(css);
+  }
+
+  const panel = document.createElement('div');
+  panel.id = 'nv-reader';
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-label', `Read ${book.title}`);
+  panel.innerHTML = `<div class="nv-bar">
+    <button id="nv-back" type="button">← Back</button>
+    <strong class="nv-title"></strong>
+    <a class="nv-link" id="nv-official" target="_blank" rel="noopener noreferrer">Original edition ↗</a>
+    <select id="nv-theme" aria-label="Reading theme"><option value="sepia">Warm paper</option><option value="light">Light</option><option value="dark">Dark</option></select>
+    <button id="nv-smaller" type="button" aria-label="Decrease font" disabled>A−</button>
+    <button id="nv-larger" type="button" aria-label="Increase font" disabled>A+</button>
+    <button id="nv-finished" type="button">Mark finished ✓</button>
+  </div><div class="nv-progress"><span id="nv-meter"></span></div>
+  <article id="nv-body" class="nv-text sepia" tabindex="0" aria-live="polite"></article>
+  <input class="nv-file" id="nv-file" type="file" accept=".txt,text/plain,.html,text/html">`;
+  document.body.append(panel);
+  panel.querySelector('.nv-title').textContent = book.title;
+  panel.querySelector('#nv-official').href = official;
+  const area = panel.querySelector('#nv-body');
+  const meter = panel.querySelector('#nv-meter');
+  const upload = panel.querySelector('#nv-file');
+  const theme = panel.querySelector('#nv-theme');
+  const controller = new AbortController();
+  const progressKey = KEY + 'progress:' + id(book);
+  const preferenceKey = KEY + 'reader-prefs';
+  let prefs = {theme:'sepia',size:18};
+  try { prefs = {...prefs,...JSON.parse(localStorage.getItem(preferenceKey)||'{}')}; } catch {}
+  prefs.size = Math.max(13,Math.min(28,Number(prefs.size)||18));
+  if (!['sepia','light','dark'].includes(prefs.theme)) prefs.theme = 'sepia';
+  theme.value = prefs.theme;
+  area.className = 'nv-text ' + prefs.theme;
+  area.style.fontSize = prefs.size + 'px';
+  function savePrefs(){try{localStorage.setItem(preferenceKey,JSON.stringify(prefs))}catch{}}
+  function close(){controller.abort();document.removeEventListener('keydown',onKey);document.body.style.overflow=oldOverflow;panel.remove();oldFocus?.focus?.()}
+  function onKey(e){if(e.key==='Escape'){e.preventDefault();close()}}
+  document.addEventListener('keydown',onKey);
+  panel.querySelector('#nv-back').onclick = close;
+  theme.onchange = () => {prefs.theme=theme.value;area.className='nv-text '+prefs.theme;savePrefs()};
+  for (const [selector,delta] of [['#nv-smaller',-1],['#nv-larger',1]]) {
+    panel.querySelector(selector).onclick = () => {prefs.size=Math.max(13,Math.min(28,prefs.size+delta));area.style.fontSize=prefs.size+'px';savePrefs()};
+  }
+  panel.querySelector('#nv-finished').onclick = async () => {
+    try {if (!(me?shelves:guestShelf).some(r=>r.book_key===id(book))) await save(book);
+      await changeStatus(id(book),'read');notify('Marked as finished ✓');}
+    catch {notify('Could not update reading status')}
+  };
+  area.onscroll = () => {
+    const fraction=area.scrollTop/Math.max(1,area.scrollHeight-area.clientHeight);
+    meter.style.width=Math.round(fraction*100)+'%';
+    try{localStorage.setItem(progressKey,String(fraction))}catch{}
+  };
+  function showText(contents){
+    if(!panel.isConnected)return;
+    area.textContent=contents;
+    panel.querySelector('#nv-smaller').disabled=false;
+    panel.querySelector('#nv-larger').disabled=false;
+    requestAnimationFrame(()=>{let p=0;try{p=Number(localStorage.getItem(progressKey)||0)}catch{};
+      area.scrollTop=Math.max(0,Math.min(1,p))*(area.scrollHeight-area.clientHeight)});
+  }
+  function fallback(){
+    if(!panel.isConnected)return;
+    area.innerHTML='<div class="nv-message"><h2>Continue reading</h2><p>This edition can’t be opened directly inside Novella because the book host restricts cross-site access.</p><div class="nv-actions"><a id="nv-open-original" class="nv-link" target="_blank" rel="noopener noreferrer">Read on Gutenberg ↗</a><button id="nv-import" type="button">Open a TXT file here</button></div></div>';
+    panel.querySelector('#nv-open-original').href=official;
+    panel.querySelector('#nv-import').onclick=()=>upload.click();
+  }
+  upload.onchange=async()=>{
+    const file=upload.files?.[0];if(!file)return;
+    if(file.size>12_000_000){notify('File too large to open here');return}
+    try{let content=await file.text();if(/\.html?$/i.test(file.name)||file.type==='text/html'){
+      const doc=new DOMParser().parseFromString(content,'text/html');doc.querySelectorAll('script,style,nav').forEach(n=>n.remove());content=doc.body?.textContent||'';
+    }showText(content)}catch{notify('Unable to open this file')}
+  };
+  area.innerHTML='<div class="nv-message"><h2>Opening the book…</h2><p>Trying the readable text edition.</p></div>';
+  if(source){
+    const timer=setTimeout(()=>controller.abort(),11000);
+    fetch(source,{signal:controller.signal}).then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.text()})
+      .then(contents=>{if(contents.length>12_000_000)throw Error('Large edition');showText(contents)})
+      .catch(()=>{if(panel.isConnected)fallback()}).finally(()=>clearTimeout(timer));
+  }else fallback();
+  track(book,'reading');
+};
 
   </script>
 </body>
