@@ -771,5 +771,82 @@ readerModal = function (book) {
 };
 
   </script>
+  <style>
+#novella-maintenance {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 9999;
+  width: min(400px, calc(100vw - 40px));
+  padding: 19px 44px 19px 22px;
+  box-sizing: border-box;
+  background: #f5f2ff;
+  color: #343047;
+  border: 1px solid #d8d0ed;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px #30244b20;
+}
+#novella-maintenance strong {
+  font: 700 11px system-ui;
+  letter-spacing: 1.5px;
+  color: #716299;
+}
+#novella-maintenance p {
+  font: italic 16px/1.6 Georgia, serif;
+  margin: 12px 0 0;
+}
+#novella-maintenance button {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  border: none;
+  background: transparent;
+  color: #716299;
+  font-size: 22px;
+  cursor: pointer;
+}
+</style>
+
+<div id="novella-maintenance" role="status">
+  <strong>● NOVELLA IS UNDER MAINTENANCE</strong>
+  <p id="novella-quote">
+    Some chapters are still being written.
+  </p>
+  <button id="novella-dismiss"
+          aria-label="Dismiss notice">×</button>
+</div>
+
+<script>
+(() => {
+  const quotes = [
+    "Some chapters are still being written.",
+    "We're polishing the little details between the pages.",
+    "A better reading experience is on its way.",
+    "Every great library deserves a little care.",
+    "Our story is still unfolding. Thank you for your patience.",
+    "A few pages are being rewritten. Stay with us.",
+    "Good things take thoughtful editing."
+  ];
+
+  const quote = document.getElementById("novella-quote");
+  const banner = document.getElementById("novella-maintenance");
+  let previous = 0;
+
+  const timer = setInterval(() => {
+    let next;
+    do {
+      next = Math.floor(Math.random() * quotes.length);
+    } while (next === previous);
+
+    previous = next;
+    quote.textContent = quotes[next];
+  }, 6000);
+
+  document.getElementById("novella-dismiss").onclick = () => {
+    clearInterval(timer);
+    banner.remove();
+  };
+})();
+</script>
 </body>
 </html>
