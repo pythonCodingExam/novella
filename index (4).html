@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="novella-maintenance" content="on">
+<title>Novella — A Quiet Interlude</title>
+<meta name="description" content="Novella is getting a little better. Our reading room will reopen shortly.">
+<style>
+:root{color-scheme:light;--ink:#25354b;--muted:#68778b;--lav:#cec7e6;--line:#d8dde4;--paper:#f7f6f2}
+*{box-sizing:border-box}body{margin:0;min-height:100svh;background:var(--paper);color:var(--ink);font-family:Arial,Helvetica,sans-serif;display:flex;flex-direction:column}
+header,footer{padding:27px clamp(24px,6vw,90px);display:flex;align-items:center;justify-content:space-between;gap:16px}
+header{border-bottom:1px solid var(--line)}.brand{font:normal 32px Georgia,serif;letter-spacing:-1px}.brand span{color:#7b70aa}.eyebrow{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#697a92}
+main{flex:1;display:grid;place-items:center;padding:55px 24px}.inner{width:min(820px,100%);text-align:center}
+.symbol{width:70px;height:70px;margin:0 auto 33px;background:#e7e3f4;border:1px solid #d5cfed;display:grid;place-items:center;border-radius:50%;font-size:30px;color:#7467a3}
+h1{font:normal clamp(48px,8vw,94px)/1.03 Georgia,'Times New Roman',serif;letter-spacing:-2px;margin:16px auto 24px;max-width:800px}h1 em{color:#6f80a0;font-weight:normal}
+.desc{max-width:520px;margin:0 auto;color:var(--muted);font-size:16px;line-height:1.8}
+.rule{height:1px;background:var(--line);margin:46px auto 29px;width:min(550px,95%)}
+blockquote{margin:0 auto;min-height:96px;max-width:650px;font:italic clamp(20px,3.2vw,29px)/1.55 Georgia,serif;color:#4a5974;transition:opacity .25s ease}
+.status{font-size:11px;letter-spacing:1.7px;color:#74699a;font-weight:bold;text-transform:uppercase}
+footer{border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+@media(max-width:640px){header,footer{padding:20px 24px}.brand{font-size:27px}main{padding:35px 22px}h1{letter-spacing:-1px}.symbol{margin-bottom:20px}.desc{font-size:14px}blockquote{min-height:120px}}
+@media(prefers-reduced-motion:reduce){blockquote{transition:none}}
+</style>
+</head>
+<body>
+<header><div class="brand">n. novella<span>.</span></div><div class="eyebrow">The reading room</div></header>
+<main><section class="inner" aria-label="Maintenance notice">
+  <div class="symbol" aria-hidden="true">✧</div>
+  <div class="eyebrow">A quiet interlude · Site maintenance</div>
+  <h1>Every good story<br>deserves <em>some care.</em></h1>
+  <p class="desc">We're making Novella more welcoming, dependable, and enjoyable to read. Our library will open automatically when the updated site is published.</p>
+  <div class="rule"></div>
+  <blockquote id="quote" aria-live="polite">“A few pages are being rewritten. Thank you for being here.”</blockquote>
+  <div class="status">✦ &nbsp; Improvements in progress</div>
+</section></main>
+<footer><span>Novella · Stories are worth the wait.</span><span id="checking">Checking for updates automatically</span></footer>
+<script>
+(()=>{
+  const quotes=[
+    '“A few pages are being rewritten. Thank you for being here.”',
+    '“Even the finest libraries need a moment of quiet.”',
+    '“We’re turning the page toward a better reading experience.”',
+    '“The next chapter is being carefully edited.”',
+    '“Great stories are worth getting the details right.”',
+    '“Our reading room will welcome you back soon.”'
+  ];
+  let index=0,checking=false;
+  const quote=document.getElementById('quote');
+  setInterval(()=>{
+    index=(index+1)%quotes.length;
+    quote.style.opacity='0';
+    setTimeout(()=>{quote.textContent=quotes[index];quote.style.opacity='1'},250);
+  },6000);
+  async function checkForLaunch(){
+    if(checking)return;
+    checking=true;
+    const abort=new AbortController();
+    const timeout=setTimeout(()=>abort.abort(),8000);
+    try{
+      const response=await fetch(location.pathname+'?novella_check='+Date.now(),{cache:'no-store',signal:abort.signal});
+      if(!response.ok)return;
+      const html=await response.text();
+      const maintenanceMarker='<meta name="novella-maintenance" content="on">';
+      if(html.includes('<html')&&!html.includes(maintenanceMarker)){
+        location.replace(location.pathname+'?updated='+Date.now());
+      }
+    }catch{}finally{clearTimeout(timeout);checking=false}
+  }
+  setInterval(checkForLaunch,30000);
+  window.addEventListener('focus',checkForLaunch);
+})();
+</script>
+</body>
+</html>
