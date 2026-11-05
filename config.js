@@ -2,5 +2,5 @@
 // NEVER place your service_role/secret key in this file.
 window.NOVELLA_CONFIG = {
   supabaseUrl: '',
-  supabaseAnonKey: ''
+  supabaseAnonKey: 'sb_publishable_DrNlggOLwp0qbzuojCTcNA_1mQlMaFs'
 };
