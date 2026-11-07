@@ -26,21 +26,21 @@ export async function onRequestPost({request,env}){
   if(letters(0,4)!=='RIFF'||letters(8,4)!=='WAVE'||letters(36,4)!=='data')return reply({error:'Invalid WAV audio'},400);
   const dv=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
   if(dv.getUint16(20,true)!==1||dv.getUint16(22,true)!==1||dv.getUint32(24,true)!==16000||dv.getUint16(34,true)!==16)
-   return reply({error:'Unsupported recording format'},400);
+    return reply({error:'Unsupported recording format'},400);
   const duration=(bytes.byteLength-44)/32000;
   if(duration<0.5||duration>12)return reply({error:'Record between 0.5 and 12 seconds'},400);
-  // Convert verified PCM WAV to base64 for Whisper-large-v3-turbo.
-  let binary='';for(let i=0;i<bytes.byteLength;i+=8192){binary+=String.fromCharCode(...bytes.subarray(i,i+8192))}
+  let binary='';
+  for(let i=0;i<bytes.byteLength;i+=8192){
+    binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
+  }
   const audio=btoa(binary);
   try{
-   const result=await env.AI.run('@cf/openai/whisper-large-v3-turbo',{
-    audio,task:'transcribe',language:'en',vad_filter:true,
-    initial_prompt:'Book titles and authors including Ikigai, Huckleberry Finn, Jane Austen, Sherlock Holmes and Pride and Prejudice.'
-   });
-   const text=String(result?.text||'').trim().slice(0,180);
-   return reply({text});
+    const result=await env.AI.run('@cf/openai/whisper-large-v3-turbo',{
+      audio,task:'transcribe',language:'en',vad_filter:true,
+      initial_prompt:'Book titles and authors including Ikigai, Huckleberry Finn, Jane Austen, Sherlock Holmes and Pride and Prejudice.'
+    });
+    return reply({text:String(result?.text||'').trim().slice(0,180)});
   }catch(e){
-   // Avoid reflecting infrastructure errors to public visitors.
-   return reply({error:'Voice transcription is temporarily unavailable'},503);
+    return reply({error:'Voice transcription is temporarily unavailable'},503);
   }
 }
