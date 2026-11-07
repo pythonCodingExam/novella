@@ -1565,5 +1565,10 @@ pollMaintenance();maintenancePoll=setInterval(pollMaintenance,60000);
 
 
   </script>
+  <script>
+const url = new URL(window.location.href);
+url.searchParams.delete("utm_source");
+history.replaceState(history.state, "", url);
+</script>
 </body>
 </html>
