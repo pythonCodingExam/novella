@@ -85,8 +85,7 @@
      return await fetch(url, {
        ...options,
        signal: controller.signal,
-       redirect: 'error',
-       cache: 'no-store'
+       redirect: 'manual'
      });
    } finally {
      clearTimeout(timer);
