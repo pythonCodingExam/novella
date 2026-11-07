@@ -1696,6 +1696,133 @@ async function pollMaintenance(){
  }catch{/* Keep the last known state on temporary network failure. */}
 }
 pollMaintenance();maintenancePoll=setInterval(pollMaintenance,60000);
+    // Novella V9.5 — automatic voice search
+// Paste immediately BEFORE the final closing </script> in index.html.
+(() => {
+  const mic = document.querySelector('#nv-search-voice');
+  if (!mic || !(window.AudioContext || window.webkitAudioContext)) return;
+  const newVAD = () => ({elapsed:0,samples:[],noise:.003,ready:false,heard:false,strong:0,last:0});
+  function step(v,rms,ms){
+    v.elapsed+=ms;
+    if(v.elapsed<=260){v.samples.push(Math.min(.04,Math.max(0,rms)));return 'calibrating'}
+    if(!v.ready){
+      const a=[...v.samples].sort((x,y)=>x-y);
+      v.noise=Math.max(.001,Math.min(.022,a[Math.floor(a.length*.25)]||.003));
+      v.ready=true;
+    }
+    const t=Math.max(.0065,Math.min(.055,v.noise*1.65+.003));
+    if(!v.heard){
+      if(rms>t)v.strong+=ms;
+      else v.strong=Math.max(0,v.strong-ms*1.7);
+      if(v.strong>=170){v.heard=true;v.last=v.elapsed;return 'started'}
+      if(rms<t)v.noise=v.noise*.996+rms*.004;
+      if(v.elapsed>=7000)return 'empty';
+    }else{
+      if(rms>Math.max(.0045,t*.66,v.noise*1.15))v.last=v.elapsed;
+      if(v.elapsed-v.last>=1150)return 'done';
+    }
+    if(v.elapsed>=11500)return v.heard?'done':'empty';
+    return 'listen';
+  }
+  async function finish(s){
+    if(nvVoiceSession!==s||s.processing||s.cancelled)return;
+    s.processing=true;
+    nvVoiceStopHardware(s);
+    if(s.frames<8000){nvVoiceCancelActive();nvVoiceNotice('No clear speech. Try again.');return}
+    const audio=nvVoiceWav(s.chunks,s.frames,s.sampleRate);
+    if(!audio){nvVoiceCancelActive();nvVoiceNotice('Recording failed.');return}
+    mic.classList.remove('nv-listening');
+    mic.classList.add('nv-processing');
+    mic.setAttribute('aria-pressed','false');
+    document.querySelector('#nv-voice-message').textContent='Finding your book…';
+    const abort=new AbortController();s.abort=abort;
+    s.timer=setTimeout(()=>abort.abort(),25000);
+    try{
+      const res=await fetch('/api/voice',{
+        method:'POST',headers:{'Content-Type':'audio/wav'},
+        body:audio,cache:'no-store',signal:abort.signal
+      });
+      const json=await res.json().catch(()=>null);
+      if(!res.ok)throw Error(json?.error||'Service unavailable');
+      const heard=nvVoiceNormalize(json?.text||'');
+      if(nvVoiceSession!==s||s.cancelled)return;
+      nvVoiceCancelActive();
+      mic.classList.remove('nv-processing');
+      if(!/[\p{L}\p{N}]{2,}/u.test(heard)||/^(um|uh|hmm|ah|you|the)$/i.test(heard)){
+        nvVoiceNotice('Could not understand. Try again.');return;
+      }
+      const match=nvVoiceClosest(heard);
+      quickSearch(match&&match.score>=.92?match.text:heard);
+    }catch(e){
+      if(nvVoiceSession!==s||s.cancelled)return;
+      nvVoiceCancelActive();
+      mic.classList.remove('nv-processing');
+      nvVoiceNotice(e?.name==='AbortError'?'Voice timed out. Try again.':'Voice temporarily unavailable. Try typing.');
+    }
+  }
+  async function start(){
+    if(nvVoiceSession){
+      if(!nvVoiceSession.processing)finish(nvVoiceSession);
+      return;
+    }
+    nvVoiceHideReview();closeSuggest();
+    const s={
+      cancelled:false,finished:false,processing:false,
+      stream:null,context:null,source:null,processor:null,gain:null,
+      chunks:[],frames:0,sampleRate:48000,timer:null,abort:null,vad:newVAD()
+    };
+    nvVoiceSession=s;
+    nvVoiceListening('Connecting microphone…');
+    try{
+      s.stream=await navigator.mediaDevices.getUserMedia({
+        audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}
+      });
+      if(nvVoiceSession!==s||s.cancelled){
+        s.stream.getTracks().forEach(t=>t.stop());return;
+      }
+      s.context=new (window.AudioContext||window.webkitAudioContext)();
+      s.sampleRate=s.context.sampleRate;
+      await s.context.resume();
+      if(nvVoiceSession!==s||s.cancelled){nvVoiceStopHardware(s);return}
+      s.source=s.context.createMediaStreamSource(s.stream);
+      s.processor=s.context.createScriptProcessor(2048,1,1);
+      s.gain=s.context.createGain();s.gain.gain.value=0;
+      s.processor.onaudioprocess=e=>{
+        if(nvVoiceSession!==s||s.processing||s.cancelled)return;
+        const d=e.inputBuffer.getChannelData(0);
+        s.chunks.push(new Float32Array(d));s.frames+=d.length;
+        let power=0,count=0;
+        for(let i=0;i<d.length;i+=8){power+=d[i]*d[i];count++}
+        const stage=step(s.vad,Math.sqrt(power/Math.max(1,count)),1000*d.length/s.sampleRate);
+        if(stage==='started')nvVoiceListening('Listening… searching when you pause.');
+        if(stage==='done')finish(s);
+        if(stage==='empty'){
+          nvVoiceCancelActive();
+          nvVoiceNotice('No speech detected. Try again.');
+        }
+      };
+      s.source.connect(s.processor);
+      s.processor.connect(s.gain);
+      s.gain.connect(s.context.destination);
+      nvVoiceListening('Listening… speak naturally.');
+      s.timer=setTimeout(()=>{
+        if(nvVoiceSession!==s||s.processing)return;
+        if(s.vad.heard)finish(s);
+        else{nvVoiceCancelActive();nvVoiceNotice('No speech detected.')}
+      },12000);
+    }catch(e){
+      if(nvVoiceSession===s){
+        nvVoiceCancelActive();
+        nvVoiceNotice(e?.name==='NotAllowedError'?'Allow microphone permission.':'Microphone could not start.');
+      }
+    }
+  }
+  mic.onclick=start;
+  mic.title='Tap, speak, pause: Novella searches automatically';
+  const style=document.createElement('style');
+  style.textContent='.nv-search-voice.nv-processing{background:#657a8e!important;color:white!important;cursor:progress}.nv-search-voice.nv-processing:after{display:none!important}';
+  document.head.appendChild(style);
+})();
 
 
   </script>
